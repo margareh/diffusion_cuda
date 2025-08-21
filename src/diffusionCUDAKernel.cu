@@ -5,11 +5,12 @@
 __global__ void diffuse_k(float *diams, float *ratios, float *ages, float *hmap, int N, int D) {
     
     // Get indices
-    int i = blockIdx.x * blockDim.x + threadIdx.x; // crater index
+    int c = blockIdx.x * blockDim.x + threadIdx.x; // crater index
+    if (c > N) return;
 
     // Get input values for this crater
-    float diam = diams[i];
-    float age = ages[i];
+    float diam = diams[c];
+    float age = ages[c];
 
     // Compute number of steps
     float k; // m^2 / Myr
@@ -29,13 +30,15 @@ __global__ void diffuse_k(float *diams, float *ratios, float *ages, float *hmap,
     int nsteps = int(kappaT / dls);
 
     // Perform diffusion for this crater
+    int c_start = c * D * D;
     float dx2 = (diam * 2 / D) * (diam * 2 / D);
     for (int t = 0; t < nsteps; t++){ // time steps
         for (int i = 1; i < D-1; i++){ // rows
+            int row_start = c_start + i * D;
             for (int j = 0; j < D-1; j++){ // columns
-                int ind = i * D + j;
-                float dx = hmap[i * D + (j+1)] - 2*hmap[ind] + hmap[i * D + (j-1)];
-                float dy = hmap[(i+1) * D + j] - 2*hmap[ind] + hmap[(i-1) * D + j];
+                int ind = row_start + j;
+                float dx = hmap[row_start + (j+1)] - 2*hmap[ind] + hmap[row_start + (j-1)];
+                float dy = hmap[row_start + D + j] - 2*hmap[ind] + hmap[row_start - D + j];
                 float dd = (dx / dx2) + (dy / dx2);
                 hmap[ind] = hmap[ind] + dls * dd;
             }
@@ -45,13 +48,13 @@ __global__ void diffuse_k(float *diams, float *ratios, float *ages, float *hmap,
     // Now find the min and max height to compute the depth to diameter ratio
     float max_h = 0;
     float min_h = 0;
-    for (int i = 0; i < D*D; i++) {
-        if (hmap[i] > max_h) max_h = hmap[i];
-        if (hmap[i] < min_h) min_h = hmap[i];
+    for (int i = 0; i < D * D; i++) {
+        if (hmap[c_start + i] > max_h) max_h = hmap[c_start + i];
+        if (hmap[c_start + i] < min_h) min_h = hmap[c_start + i];
     }
 
     // Update ratios in place
-    ratios[i] = (max_h - min_h) / diam;
+    ratios[c] = (max_h - min_h) / diam;
 
 }
 
@@ -62,19 +65,20 @@ void diffusionCUDAKernel(float *diams, float *ratios, float *ages, float *hmap, 
     cudaMalloc(&d_diams, N * sizeof(float));
     cudaMalloc(&d_ratios, N * sizeof(float));
     cudaMalloc(&d_ages, N * sizeof(float));
-    cudaMalloc(&d_hmap, D * D * sizeof(float));
+    cudaMalloc(&d_hmap, N * D * D * sizeof(float));
 
     // Copy data over to shared arrays
     cudaMemcpy(d_diams, diams, N * sizeof(float), cudaMemcpyHostToDevice);
     cudaMemcpy(d_ratios, ratios, N * sizeof(float), cudaMemcpyHostToDevice);
     cudaMemcpy(d_ages, ages, N * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_hmap, hmap, D * D * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_hmap, hmap, N * D * D * sizeof(float), cudaMemcpyHostToDevice);
 
     // Call the kernel
     diffuse_k<<<GET_BLOCKS(N), CUDA_NUM_THREADS, 0, stream>>>(d_diams, d_ratios, d_ages, d_hmap, N, D);
 
     // Read the results back into the ratios array
     cudaMemcpy(ratios, d_ratios, N * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(hmap, d_hmap, N * D * D * sizeof(float), cudaMemcpyDeviceToHost);
 
     // Error handling
     cudaError_t err = cudaGetLastError();

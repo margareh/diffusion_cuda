@@ -27,7 +27,7 @@ https://scipython.com/book2/chapter-7-matplotlib/examples/the-two-dimensional-di
 import torch
 from diffusionCUDA import diffusionCUDA
 
-def diffusion_cuda(diams, ratios, ages, hmap, D=200):
+def diffusion_cuda(diams, ratios, ages, surfaces, D=200):
     """
     Python wrapper for diffusion model in CUDA
     Inputs: diameters, depth to diameter ratios, and ages for craters; D = domain size
@@ -35,13 +35,22 @@ def diffusion_cuda(diams, ratios, ages, hmap, D=200):
     """
 
     # create array to store results in
-    diams = torch.tensor(diams, device=torch.device('cuda'))
-    ratios = torch.tensor(ratios, device=torch.device('cuda'))
-    ages = torch.tensor(ages, device=torch.device('cuda'))
-    hmap = torch.tensor(hmap, device=torch.device('cuda'))
+    # these are all of length N
+    diams = torch.tensor(diams).float()
+    ratios = torch.tensor(ratios).float()
+    ages = torch.tensor(ages).float()
     N = diams.shape[0]
 
-    # call to CUDA kernel wrapper
-    diffusionCUDA(diams, ratios, ages, hmap, N, D)
+    # flatten surfaces
+    # this is of length N * D * D
+    surfaces_f = torch.tensor(surfaces).flatten().float()
 
-    return ratios
+    # call to CUDA kernel wrapper
+    diffusionCUDA(diams, ratios, ages, surfaces_f, N, D)
+
+    # reshape surfaces
+    surfaces_f = surfaces_f.unflatten(-1, (N, D*D)).unflatten(-1, (D, D)) # result will be N x D x D
+    surfaces_np = surfaces_f.cpu().numpy()
+    ratios_np = ratios.cpu().numpy()
+
+    return ratios_np, surfaces_np
