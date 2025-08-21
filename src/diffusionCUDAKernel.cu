@@ -1,0 +1,96 @@
+#include "gpu.cuh"
+#include <iostream>
+#include <cmath>
+
+__global__ void diffuse_k(float *diams, float *ratios, float *ages, float *hmap, int N, int D) {
+    
+    // Get indices
+    int i = blockIdx.x * blockDim.x + threadIdx.x; // crater index
+
+    // Get input values for this crater
+    float diam = diams[i];
+    float age = ages[i];
+
+    // Compute number of steps
+    float k; // m^2 / Myr
+    if (diam <= 11.2) {
+        k = 0.0155;
+    } else if (diam < 45) {
+        k = 1.55e-3 * pow(diam, 0.974);
+    } else if (diam < 125) {
+        k = 1.23e-3 * pow(diam, 0.8386);
+    } else {
+        k = 5.2e-3 * pow(diam, 1.3);
+    }
+
+    // diffusivity, diffusion length scale, and number of steps in time to take
+    float kappaT = 1e-6 * k * age;
+    float dls = pow((2 * diam / D), 2) / 4;
+    int nsteps = int(kappaT / dls);
+
+    // Perform diffusion for this crater
+    float dx2 = (diam * 2 / D) * (diam * 2 / D);
+    for (int t = 0; t < nsteps; t++){ // time steps
+        for (int i = 1; i < D-1; i++){ // rows
+            for (int j = 0; j < D-1; j++){ // columns
+                int ind = i * D + j;
+                float dx = hmap[i * D + (j+1)] - 2*hmap[ind] + hmap[i * D + (j-1)];
+                float dy = hmap[(i+1) * D + j] - 2*hmap[ind] + hmap[(i-1) * D + j];
+                float dd = (dx / dx2) + (dy / dx2);
+                hmap[ind] = hmap[ind] + dls * dd;
+            }
+        }
+    }
+
+    // Now find the min and max height to compute the depth to diameter ratio
+    float max_h = 0;
+    float min_h = 0;
+    for (int i = 0; i < D*D; i++) {
+        if (hmap[i] > max_h) max_h = hmap[i];
+        if (hmap[i] < min_h) min_h = hmap[i];
+    }
+
+    // Update ratios in place
+    ratios[i] = (max_h - min_h) / diam;
+
+}
+
+void diffusionCUDAKernel(float *diams, float *ratios, float *ages, float *hmap, int N, int D, cudaStream_t stream) {
+
+    // Create shared arrays
+    float *d_diams, *d_ratios, *d_ages, *d_hmap;
+    cudaMalloc(&d_diams, N * sizeof(float));
+    cudaMalloc(&d_ratios, N * sizeof(float));
+    cudaMalloc(&d_ages, N * sizeof(float));
+    cudaMalloc(&d_hmap, D * D * sizeof(float));
+
+    // Copy data over to shared arrays
+    cudaMemcpy(d_diams, diams, N * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_ratios, ratios, N * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_ages, ages, N * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_hmap, hmap, D * D * sizeof(float), cudaMemcpyHostToDevice);
+
+    // Call the kernel
+    diffuse_k<<<GET_BLOCKS(N), CUDA_NUM_THREADS, 0, stream>>>(d_diams, d_ratios, d_ages, d_hmap, N, D);
+
+    // Read the results back into the ratios array
+    cudaMemcpy(ratios, d_ratios, N * sizeof(float), cudaMemcpyDeviceToHost);
+
+    // Error handling
+    cudaError_t err = cudaGetLastError();
+    if (cudaSuccess != err){
+        std::cout << "CUDA kernel failed with eror: " << cudaGetErrorString(err) << std::endl;
+    }
+
+    // Clear memory
+    cudaFree(d_diams);
+    cudaFree(d_ratios);
+    cudaFree(d_ages);
+    cudaFree(d_hmap);
+
+    d_diams=NULL;
+    d_ratios=NULL;
+    d_ages=NULL;
+    d_hmap=NULL;
+
+}

@@ -1,0 +1,1 @@
+void diffusionCUDAKernel(float *diameters, float *ratios, float *ages, float *hmap, int N, int D, cudaStream_t stream);
