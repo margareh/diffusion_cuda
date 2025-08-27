@@ -6,7 +6,7 @@ __global__ void diffuse_k(float *diams, float *ratios, float *ages, float *hmap_
     
     // Get indices
     int c = blockIdx.x * blockDim.x + threadIdx.x; // crater index
-    if (c > N) return;
+    if (c >= N) return;
 
     // Get input values for this crater
     float diam = diams[c];
