@@ -41,16 +41,26 @@ def diffusion_cuda(diams, ratios, ages, surfaces, D=200):
     ages = torch.tensor(ages).float()
     N = diams.shape[0]
 
+    # sparsify the surfaces (they should be symmetric, only need upper diagonal)
+    inds = torch.triu_indices(D, D)
+    surfaces_s = torch.tensor(surfaces)[:, inds[0], inds[1]]
+
     # flatten surfaces
-    # this is of length N * D * D
-    surfaces_f = torch.tensor(surfaces).flatten().float()
+    # this is of length N * S with S = D * (D + 1) / 2
+    surfaces_f = surfaces_s.flatten().float()
 
     # call to CUDA kernel wrapper
     diffusionCUDA(diams, ratios, ages, surfaces_f, N, D)
 
     # reshape surfaces
-    surfaces_f = surfaces_f.unflatten(-1, (N, D*D)).unflatten(-1, (D, D)) # result will be N x D x D
-    surfaces_np = surfaces_f.cpu().numpy()
+    # this also fills in the lower triangle based on the upper triangle
+    S = int((D*(D+1)) / 2)
+    surfaces = surfaces_f.unflatten(-1, (N, S))
+    surfaces_all = torch.zeros((N, D, D))
+    surfaces_all[:, inds[0], inds[1]] = surfaces
+    surfaces_all[:, inds[1], inds[0]] = surfaces
+
+    surfaces_np = surfaces_all.cpu().numpy()
     ratios_np = ratios.cpu().numpy()
 
     return ratios_np, surfaces_np
