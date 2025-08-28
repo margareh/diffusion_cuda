@@ -91,7 +91,7 @@ void diffusionCUDAKernel(float *diams, float *ratios, float *ages, float *hmap, 
     // Error handling
     cudaError_t err = cudaGetLastError();
     if (cudaSuccess != err){
-        std::cout << "CUDA kernel failed with eror: " << cudaGetErrorString(err) << std::endl;
+        std::cout << "CUDA kernel failed with error: " << cudaGetErrorString(err) << std::endl;
     }
 
     // Clear memory
