@@ -32,8 +32,16 @@ __global__ void diffuse_k(float *diams, float *ratios, float *ages, float *hmap_
     // Perform diffusion for this crater
     int S = ceil(D * (D + 1) / 2); // number of elements in upper triangular vector for one crater profile
     int c_start = c * S;
-    float dx2 = (diam * 2 / D) * (diam * 2 / D);
 
+    // If age is zero, no diffusion necessary so return
+    if (fabs(age) < 0.0001) {
+        for (i=0; i < S; i++){
+            hmap_out[c_start+i] = hmap_in[c_start+i];
+        }
+        return;
+    }
+
+    float dx2 = (diam * 2 / D) * (diam * 2 / D);
     float dx, dy, dd;
     bool diag;
     int i_map, row, nextx, nexty, prevx, prevy, edge;
