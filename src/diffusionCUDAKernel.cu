@@ -35,7 +35,7 @@ __global__ void diffuse_k(float *diams, float *ratios, float *ages, float *hmap_
 
     // If age is zero, no diffusion necessary so return
     if (fabs(age) < 0.0001) {
-        for (i=0; i < S; i++){
+        for (int i=0; i < S; i++){
             hmap_out[c_start+i] = hmap_in[c_start+i];
         }
         return;
