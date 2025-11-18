@@ -13,19 +13,20 @@ __global__ void diffuse_k(float *diams, float *ratios, float *ages, float *hmap_
     float age = ages[c];
 
     // Compute number of steps
-    float k; // m^2 / Myr
-    if (diam <= 11.2) {
-        k = 0.0155;
-    } else if (diam < 45) {
-        k = 1.55e-3 * pow(diam, 0.974);
-    } else if (diam < 125) {
-        k = 1.23e-3 * pow(diam, 0.8386);
-    } else {
-        k = 5.2e-3 * pow(diam, 1.3);
-    }
+    // float k; // m^2 / Myr
+    // if (diam <= 11.2) {
+    //     k = 0.0155;
+    // } else if (diam < 45) {
+    //     k = 1.55e-3 * pow(diam, 0.974);
+    // } else if (diam < 125) {
+    //     k = 1.23e-3 * pow(diam, 0.8386);
+    // } else {
+    //     k = 5.2e-3 * pow(diam, 1.3);
+    // }
+    float k = 5.5e-6 * pow(diam / 1000, 0.9);
 
     // Compute diffusivity, diffusion length scale, and number of steps in time to take
-    float kappaT = 1e-6 * k * age;
+    float kappaT = k * age;
     float dls = pow((2 * diam / D), 2) / 4;
     int nsteps = ceil(kappaT / dls);
 
